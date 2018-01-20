@@ -1,3 +1,4 @@
+import argparse
 import tensorflow as tf
 #from tensorflow import keras
 import keras
@@ -6,13 +7,12 @@ import keras.models as models
 import keras.regularizers as regularizers
 import keras.preprocessing.image as image_preproc
 import keras.backend as K
-import numpy as np
 
-from dataio import history_to_json, maybe_train_test_split
+from dataio import history_to_json, maybe_train_test_split, load_config
 
 print('tensorflow', tf.__version__, 'keras', keras.__version__)
 
-def residual_block(input_tensor, filters, layer_num, reg, downsample=False):
+def residual_block(input_tensor, filters, layer_num, reg, downsample=False, first_layer=False):
     """
     Residual block with bottleneck layers and preactivation
     :param input_tensor: the input
@@ -20,6 +20,7 @@ def residual_block(input_tensor, filters, layer_num, reg, downsample=False):
     :param layer_num: # of this layer
     :param reg: regularization parameter
     :param downsample: reduce size of output by 2
+    :param first_layer: whether it's first residual block in the network or not
     :return: output tensor of the same shape that input_tensor or with dimensions reduced by two if reduce=True
     """
     bn_name = lambda ver: 'bn_{}_{}'.format(layer_num, ver)
@@ -27,11 +28,11 @@ def residual_block(input_tensor, filters, layer_num, reg, downsample=False):
     conv_name = lambda ver: 'conv_{}_{}'.format(layer_num, ver)
     merge_name = 'merge_{}'.format(layer_num)
 
-    if layer_num > 1:
+    if first_layer:
+        x = input_tensor
+    else:
         x = layers.BatchNormalization(name=bn_name('a'))(input_tensor)
         x = layers.Activation('relu', name=act_name('a'))(x)
-    else:
-        x = input_tensor
 
     x = layers.Conv2D(filters[0], (1, 1),
                       use_bias=False,
@@ -67,9 +68,10 @@ def expand_channels_bottleneck(tensor, new_channels, layer_num):
     assert new_channels - C > 0
     return layers.Conv2D(new_channels, (1,1), strides=(2,2), name='resize_{}'.format(layer_num))(tensor)
 
-def resnet_model(input_shape, num_classes, num_layers, reg):
+def resnet_model(model_config):
 
-    input_tensor = layers.Input(shape=input_shape)
+    input_tensor = layers.Input(shape=model_config['input_shape'])
+    reg = model_config['regularization']
 
     x = layers.Conv2D(128, (3, 3),
                       use_bias=False,
@@ -79,25 +81,52 @@ def resnet_model(input_shape, num_classes, num_layers, reg):
     x = layers.BatchNormalization(name='bn_0')(x)
     x = layers.Activation('relu', name='relu_0')(x)
 
-    x = residual_block(x, [32, 32, 128], layer_num=1, reg=reg)
-    x = residual_block(x, [32, 32, 128], layer_num=2, reg=reg)
-    x = residual_block(x, [32, 32, 256], layer_num=3, reg=reg, downsample=True)
-    x = residual_block(x, [16, 16, 256], layer_num=4, reg=reg)
-    x = residual_block(x, [16, 16, 256], layer_num=5, reg=reg)
+    for sc, section_config in enumerate(model_config['sections']):
+        x = make_section(x, section_config, sc, reg)
 
     x = layers.BatchNormalization(name='bn_final')(x)
     x = layers.Activation('relu', name='relu_final')(x)
 
     x = layers.GlobalAveragePooling2D(name='global_pool')(x)
-    x = layers.Dense(num_classes, activation='softmax', name='fc_final')(x)
+    x = layers.Dense(model_config['num_classes'], activation='softmax', name='fc_final')(x)
 
     return models.Model(input_tensor, x)
 
+def make_section(input_tensor, section_config, section_num, reg):
+    """
+    Builds resnet section comprised of several residual blocks, with or without downsampling
+    :param input_tensor: input
+    :param section_config: dict with config
+    :param section_num: section number
+    :param reg: regularization
 
-def main():
+    :return: section output tensor
+    """
+    if section_num == 0:
+        layer_num = '{}_{}'.format(section_num, 0)
+        x = residual_block(input_tensor, section_config['filters'], layer_num=layer_num, reg=reg)
+    else:
+        layer_num = '{}_{}'.format(section_num, 0)
+        x = residual_block(input_tensor, section_config['filters'], layer_num=layer_num, reg=reg)
+
+    for l in range(1, section_config['count']-1):
+        layer_num = '{}_{}'.format(section_num, l)
+        x = residual_block(x, section_config['filters'], layer_num=layer_num, reg=reg)
+
+    if section_config['downsample']:
+        filters = section_config['filters'][:2] + [section_config['downsample_channels'], ]
+    else:
+        filters = section_config['filters']
+
+    return residual_block(x, filters, layer_num=section_config['count']-1,
+                          reg=reg, downsample=section_config['downsample'])
+
+def main(config_path):
     from datetime import datetime as dt
     start = dt.now()
-    model = resnet_model(input_shape=(32, 32, 3), num_classes=5, num_layers=5, reg=0.0)
+
+    model_config = load_config(config_path)
+    model = resnet_model(model_config=model_config)
     model.summary()
     model.compile(optimizer='adam',
                   loss='categorical_crossentropy',
@@ -128,9 +157,13 @@ def main():
         validation_steps=20)
 
     runtime = dt.now() - start
-    print('Training output file:', history_to_json(history.history, str(runtime)))
+    print('Training output file:', history_to_json(history.history, str(runtime), model_config))
     print('Time spent:', runtime)
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(description="Residual network implementation")
+    parser.add_argument('--config')
+
+    args = parser.parse_args()
+    main(args.config)
 

@@ -1,2 +1,4 @@
-*.json
+output/*.json
 *.h5
+.idea/
+__pycache__/

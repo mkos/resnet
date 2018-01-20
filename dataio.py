@@ -55,9 +55,24 @@ def mk_unique_filename(prefix):
     timestamp = time.strftime('_%Y_%m_%d_%H_%M_%S', time.localtime())
     return prefix + timestamp
 
-def history_to_json(history, run_time=None, filename=None):
 
+def load_config(config_path):
+    with open(config_path, 'r') as jsonfp:
+        return json.load(jsonfp)
+
+
+def history_to_json(history, run_time=None, config=None, filename=None):
+    """
+    Writes training run information to JSON file.
+
+    :param history: keras.History.history object
+    :param run_time: time of run
+    :param config: config dict
+    :param filename: optional name of the output file
+    :return: filename string
+    """
     data = {
+        'config': config,
         'history': history,
         'run_time': run_time
     }
@@ -66,6 +81,6 @@ def history_to_json(history, run_time=None, filename=None):
         filename = mk_unique_filename('training') + '.json'
 
     with open(filename, 'w') as jsonfp:
-        json.dump(data, jsonfp)
+        json.dump(data, jsonfp, indent=4)
 
     return filename

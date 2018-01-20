@@ -1,0 +1,10 @@
+{
+    "name": "small-test",
+    "input_shape": [32, 32, 3],
+    "num_classes": 5,
+    "regularization": 0.0,
+    "sections": [
+        {"count": 3, "filters": [32, 32, 128], "downsample": true, "downsample_channels": 256},
+        {"count": 2, "filters": [64, 64, 256], "downsample": false}
+    ]
+}
