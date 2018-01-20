@@ -80,7 +80,7 @@ def history_to_json(history, run_time=None, config=None, filename=None):
     if filename is None:
         filename = mk_unique_filename('training') + '.json'
 
-    with open(filename, 'w') as jsonfp:
-        json.dump(data, jsonfp, indent=4)
+    with open(os.path.join('output', filename), 'w') as jsonfp:
+        json.dump(data, jsonfp, indent=2)
 
     return filename

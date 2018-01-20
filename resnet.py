@@ -1,4 +1,4 @@
-import argparse
+import argparse, os
 import tensorflow as tf
 #from tensorflow import keras
 import keras
@@ -73,7 +73,7 @@ def resnet_model(model_config):
     input_tensor = layers.Input(shape=model_config['input_shape'])
     reg = model_config['regularization']
 
-    x = layers.Conv2D(128, (3, 3),
+    x = layers.Conv2D(64, (3, 3),
                       use_bias=False,
                       padding='same',
                       kernel_regularizer=regularizers.l2(reg),
@@ -118,12 +118,16 @@ def make_section(input_tensor, section_config, section_num, reg):
     else:
         filters = section_config['filters']
 
-    return residual_block(x, filters, layer_num=section_config['count']-1,
+    layer_num = '{}_{}'.format(section_num, section_config['count']-1)
+    return residual_block(x, filters, layer_num=layer_num,
                           reg=reg, downsample=section_config['downsample'])
 
-def main(config_path):
+def main(args):
     from datetime import datetime as dt
     start = dt.now()
+
+    config_path = args.config
+    weights_path = args.weights
 
     model_config = load_config(config_path)
     model = resnet_model(model_config=model_config)
@@ -131,6 +135,10 @@ def main(config_path):
     model.compile(optimizer='adam',
                   loss='categorical_crossentropy',
                   metrics=['accuracy'])
+
+    if os.path.exists(weights_path):
+        print('Loading weights from', weights_path)
+        model.load_weights(weights_path)
 
     # flowers dataset from: http://download.tensorflow.org/example_images/flower_photos.tgz
     train_dir, test_dir = maybe_train_test_split('/Users/kosa/repos/datasets/flowers')
@@ -156,14 +164,19 @@ def main(config_path):
         validation_data=test_generator,
         validation_steps=20)
 
+    if weights_path is not None:
+        model.save_weights(weights_path)
+        print('Saved weights to', weights_path)
+
     runtime = dt.now() - start
     print('Training output file:', history_to_json(history.history, str(runtime), model_config))
     print('Time spent:', runtime)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Residual network implementation")
-    parser.add_argument('--config')
+    parser.add_argument('--config', required=True, help='path to config file')
+    parser.add_argument('--weights', default=None, help='path where to store weights')
 
     args = parser.parse_args()
-    main(args.config)
+    main(args)
 
