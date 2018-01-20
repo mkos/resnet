@@ -5,7 +5,7 @@ with _pre-activation_ improvements from [Identity Mappings in Deep Residual Netw
 
 Differences in implementation from original paper:
 - model is trained on flowers dataset ([download](http://download.tensorflow.org/example_images/flower_photos.tgz))
-- due to smaller input image size, first layer has filter size [3x3] and there is no maxpool layer following it
+- due to smaller input image size, first layer has filter size [3x3] instead of [7x7] and there is no maxpool layer following it
 - there is only bottleneck residual block implemented
 - layers that downsample use bottleneck layers to adjust skip-connection size
 - only implemented resnet-18 (`conf/resnet_18.json`) but other networks can be easily implemented

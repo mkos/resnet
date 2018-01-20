@@ -1,0 +1,12 @@
+{
+  "name": "resnet-18",
+  "input_shape": [32, 32, 3],
+  "num_classes": 5,
+  "regularization": 0.0,
+  "sections": [
+    {"count": 2, "filters": [16, 16, 64], "downsample": true, "downsample_channels": 128},
+    {"count": 2, "filters": [32, 32, 128], "downsample": true, "downsample_channels": 256},
+    {"count": 2, "filters": [64, 64, 256], "downsample": true, "downsample_channels": 512},
+    {"count": 2, "filters": [128, 128, 512], "downsample": false}
+  ]
+}
