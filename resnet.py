@@ -5,19 +5,21 @@ import keras.layers as layers
 import keras.models as models
 import keras.regularizers as regularizers
 import keras.preprocessing.image as image_preproc
+import keras.backend as K
+import numpy as np
 
 from dataio import history_to_json, maybe_train_test_split
 
 print('tensorflow', tf.__version__, 'keras', keras.__version__)
 
-def residual_block(input_tensor, filters, layer_num, reg, reduce=False):
+def residual_block(input_tensor, filters, layer_num, reg, downsample=False):
     """
     Residual block with bottleneck layers and preactivation
     :param input_tensor: the input
     :param filters: tuple of three channel numbers for member conv layers
     :param layer_num: # of this layer
     :param reg: regularization parameter
-    :param reduce: reduce size of output by 2
+    :param downsample: reduce size of output by 2
     :return: output tensor of the same shape that input_tensor or with dimensions reduced by two if reduce=True
     """
     bn_name = lambda ver: 'bn_{}_{}'.format(layer_num, ver)
@@ -47,15 +49,23 @@ def residual_block(input_tensor, filters, layer_num, reg, reduce=False):
 
     x = layers.BatchNormalization(name=bn_name('c'))(x)
     x = layers.Activation('relu', name=act_name('c'))(x)
-    x = layers.Conv2D(filters[2], (1, 1),
+
+    final_stride = (2,2) if downsample else (1,1)
+    x = layers.Conv2D(filters[2], (1,1),
+                      strides=final_stride,
                       use_bias=False,
                       padding='same',
                       kernel_regularizer=regularizers.l2(reg),
                       name=conv_name('c'))(x)
 
+    input_tensor = expand_channels_bottleneck(input_tensor, filters[2], layer_num) if downsample else input_tensor
     x = layers.add([input_tensor, x], name=merge_name)
     return x
 
+def expand_channels_bottleneck(tensor, new_channels, layer_num):
+    N, H, W, C = K.int_shape(tensor)
+    assert new_channels - C > 0
+    return layers.Conv2D(new_channels, (1,1), strides=(2,2), name='resize_{}'.format(layer_num))(tensor)
 
 def resnet_model(input_shape, num_classes, num_layers, reg):
 
@@ -69,14 +79,16 @@ def resnet_model(input_shape, num_classes, num_layers, reg):
     x = layers.BatchNormalization(name='bn_0')(x)
     x = layers.Activation('relu', name='relu_0')(x)
 
-    for l in range(1, num_layers+1):
-        x = residual_block(x, [32,32,128], layer_num=l, reg=reg)
+    x = residual_block(x, [32, 32, 128], layer_num=1, reg=reg)
+    x = residual_block(x, [32, 32, 128], layer_num=2, reg=reg)
+    x = residual_block(x, [32, 32, 256], layer_num=3, reg=reg, downsample=True)
+    x = residual_block(x, [16, 16, 256], layer_num=4, reg=reg)
+    x = residual_block(x, [16, 16, 256], layer_num=5, reg=reg)
 
     x = layers.BatchNormalization(name='bn_final')(x)
     x = layers.Activation('relu', name='relu_final')(x)
 
     x = layers.GlobalAveragePooling2D(name='global_pool')(x)
-    #x = layers.Flatten(name='flat')(x)
     x = layers.Dense(num_classes, activation='softmax', name='fc_final')(x)
 
     return models.Model(input_tensor, x)
@@ -110,8 +122,8 @@ def main():
 
     history = model.fit_generator(
         train_generator,
-        steps_per_epoch=1,
-        epochs=1,
+        steps_per_epoch=100,
+        epochs=10,
         validation_data=test_generator,
         validation_steps=20)
 
